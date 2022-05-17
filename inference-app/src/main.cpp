@@ -11,7 +11,7 @@
 #include "hardware/pwm.h"
 
 extern "C" {
-#include "pico/pdm_microphone.h"
+#include "pico/analog_microphone.h"
 }
 
 #include "tflite_model.h"
@@ -27,18 +27,12 @@ extern "C" {
 #define INPUT_SHIFT       0
 
 // microphone configuration
-const struct pdm_microphone_config pdm_config = {
-    // GPIO pin for the PDM DAT signal
-    .gpio_data = 2,
+const struct analog_microphone_config analog_config = {
+    // GPIO to use for input, must be ADC compatible (GPIO 26 - 28)
+    .gpio = 26,
 
-    // GPIO pin for the PDM CLK signal
-    .gpio_clk = 3,
-
-    // PIO instance to use
-    .pio = pio0,
-
-    // PIO State Machine instance to use
-    .pio_sm = 0,
+    // bias voltage of microphone in volts
+    .bias_voltage = 1.25,
 
     // sample rate in Hz
     .sample_rate = SAMPLE_RATE,
@@ -59,7 +53,7 @@ int8_t* scaled_spectrum = nullptr;
 int32_t spectogram_divider;
 float spectrogram_zero_point;
 
-void on_pdm_samples_ready();
+void on_analog_samples_ready();
 
 int main( void )
 {
@@ -93,19 +87,19 @@ int main( void )
     spectogram_divider = 64 * ml_model.input_scale(); 
     spectrogram_zero_point = ml_model.input_zero_point();
 
-    // initialize the PDM microphone
-    if (pdm_microphone_init(&pdm_config) < 0) {
-        printf("PDM microphone initialization failed!\n");
+    // initialize the Analog microphone
+    if (analog_microphone_init(&analog_config) < 0) {
+        printf("Analog microphone initialization failed!\n");
         while (1) { tight_loop_contents(); }
     }
 
     // set callback that is called when all the samples in the library
     // internal sample buffer are ready for reading
-    pdm_microphone_set_samples_ready_handler(on_pdm_samples_ready);
+    analog_microphone_set_samples_ready_handler(on_analog_samples_ready);
 
-    // start capturing data from the PDM microphone
-    if (pdm_microphone_start() < 0) {
-        printf("PDM microphone start failed!\n");
+    // start capturing data from the Analog microphone
+    if (analog_microphone_start() < 0) {
+        printf("Analog microphone start failed!\n");
         while (1) { tight_loop_contents(); }
     }
 
@@ -146,11 +140,11 @@ int main( void )
     return 0;
 }
 
-void on_pdm_samples_ready()
+void on_analog_samples_ready()
 {
     // callback from library when all the samples in the library
     // internal sample buffer are ready for reading 
 
     // read in the new samples
-    new_samples_captured = pdm_microphone_read(capture_buffer_q15, INPUT_BUFFER_SIZE);
+    new_samples_captured = analog_microphone_read(capture_buffer_q15, INPUT_BUFFER_SIZE);
 }
