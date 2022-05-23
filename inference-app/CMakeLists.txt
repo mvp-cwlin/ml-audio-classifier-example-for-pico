@@ -31,7 +31,7 @@ add_subdirectory(${DSP}/Source EXCLUDE_FROM_ALL)
 # rest of your project
 add_executable(pico_inference_app
     ${CMAKE_CURRENT_LIST_DIR}/src/main.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/dsp_pipeline.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/ringBuffer.h
     ${CMAKE_CURRENT_LIST_DIR}/src/ml_model.cpp
 )
 
