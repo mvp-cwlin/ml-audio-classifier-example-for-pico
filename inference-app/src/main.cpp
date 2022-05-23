@@ -65,11 +65,6 @@ int main( void )
         while (1) { tight_loop_contents(); }
     }
 
-    if (!dsp_pipeline.init()) {
-        printf("Failed to initialize DSP Pipeline!\n");
-        while (1) { tight_loop_contents(); }
-    }
-
     int8_t* input = (int8_t*)ml_model.input_data();
     bool recording = false;
     int curIndex = 0;
