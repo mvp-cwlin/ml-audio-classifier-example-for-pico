@@ -10,6 +10,8 @@
 #include "pico/stdlib.h"
 #include "hardware/pwm.h"
 
+#include "arm_math.h"
+
 extern "C" {
 #include "pico/analog_microphone.h"
 }
@@ -72,6 +74,8 @@ int main( void )
     float filtered = 0;
     float alpha = 0.98;
     int historySize = 100;
+
+    ringBuffer history(historySize);
 
     // initialize the Analog microphone
     if (analog_microphone_init(&analog_config) < 0) {
