@@ -16,15 +16,17 @@ extern "C" {
 
 #include "tflite_model.h"
 
-#include "dsp_pipeline.h"
 #include "ml_model.h"
+
+#include "ringBuffer.h"
 
 // constants
 #define SAMPLE_RATE       16000
 #define FFT_SIZE          256
 #define SPECTRUM_SHIFT    4
-#define INPUT_BUFFER_SIZE ((FFT_SIZE / 2) * SPECTRUM_SHIFT)
-#define INPUT_SHIFT       0
+#define INPUT_BUFFER_SIZE 16
+#define INPUT_SIZE        1323
+#define CAPTURE_THRESHOLD 0.01
 
 // microphone configuration
 const struct analog_microphone_config analog_config = {
@@ -32,7 +34,7 @@ const struct analog_microphone_config analog_config = {
     .gpio = 26,
 
     // bias voltage of microphone in volts
-    .bias_voltage = 1.25,
+    .bias_voltage = 0.8,
 
     // sample rate in Hz
     .sample_rate = SAMPLE_RATE,
@@ -41,17 +43,13 @@ const struct analog_microphone_config analog_config = {
     .sample_buffer_size = INPUT_BUFFER_SIZE,
 };
 
-q15_t capture_buffer_q15[INPUT_BUFFER_SIZE];
+q15_t sample[INPUT_BUFFER_SIZE];
 volatile int new_samples_captured = 0;
 
-q15_t input_q15[INPUT_BUFFER_SIZE + (FFT_SIZE / 2)];
+bool sample_ready = false;
 
-DSPPipeline dsp_pipeline(FFT_SIZE);
-MLModel ml_model(tflite_model, 128 * 1024);
+MLModel ml_model(tflite_model, 128 * 1323);
 
-int8_t* scaled_spectrum = nullptr;
-int32_t spectogram_divider;
-float spectrogram_zero_point;
 
 void on_analog_samples_ready();
 
@@ -60,18 +58,7 @@ int main( void )
     // initialize stdio
     stdio_init_all();
 
-    printf("hello pico fire alarm detection\n");
-
-    gpio_set_function(PICO_DEFAULT_LED_PIN, GPIO_FUNC_PWM);
-    
-    uint pwm_slice_num = pwm_gpio_to_slice_num(PICO_DEFAULT_LED_PIN);
-    uint pwm_chan_num = pwm_gpio_to_channel(PICO_DEFAULT_LED_PIN);
-
-    // Set period of 256 cycles (0 to 255 inclusive)
-    pwm_set_wrap(pwm_slice_num, 256);
-
-    // Set the PWM running
-    pwm_set_enabled(pwm_slice_num, true);
+    printf("pico bullet detection\n");
 
     if (!ml_model.init()) {
         printf("Failed to initialize ML model!\n");
@@ -83,9 +70,13 @@ int main( void )
         while (1) { tight_loop_contents(); }
     }
 
-    scaled_spectrum = (int8_t*)ml_model.input_data();
-    spectogram_divider = 64 * ml_model.input_scale(); 
-    spectrogram_zero_point = ml_model.input_zero_point();
+    int8_t* input = (int8_t*)ml_model.input_data();
+    bool recording = false;
+    int curIndex = 0;
+    float rising = 0;
+    float filtered = 0;
+    float alpha = 0.98;
+    int historySize = 100;
 
     // initialize the Analog microphone
     if (analog_microphone_init(&analog_config) < 0) {
@@ -110,31 +101,42 @@ int main( void )
         }
         new_samples_captured = 0;
 
-        dsp_pipeline.shift_spectrogram(scaled_spectrum, SPECTRUM_SHIFT, 124);
+        float max = 0;
+		for(int n = 0; n < 16; n++){
+			max = abs(sample[n])>max?abs(sample[n]):max;
+			if((pow(sample[n],2) > CAPTURE_THRESHOLD) && (!recording) && (rising > 0)){
+				recording = true;
+			}
+			if(recording){
+				input[curIndex++] = history.front();
+				if(curIndex == INPUT_SIZE){
+					recording = false;
+					curIndex = 0;
+                    sample_ready = true;
+				}
+			}
 
-        // move input buffer values over by INPUT_BUFFER_SIZE samples
-        memmove(input_q15, &input_q15[INPUT_BUFFER_SIZE], (FFT_SIZE / 2));
+            history.push(sample[n]);
+		}
 
-        // copy new samples to end of the input buffer with a bit shift of INPUT_SHIFT
-        arm_shift_q15(capture_buffer_q15, INPUT_SHIFT, input_q15 + (FFT_SIZE / 2), INPUT_BUFFER_SIZE);
-    
-        for (int i = 0; i < SPECTRUM_SHIFT; i++) {
-            dsp_pipeline.calculate_spectrum(
-                input_q15 + i * ((FFT_SIZE / 2)),
-                scaled_spectrum + (129 * (124 - SPECTRUM_SHIFT + i)),
-                spectogram_divider, spectrogram_zero_point
-            );
+		// std::cout << max << std::endl;
+		float tempfiltered = filtered * alpha + max * (1-alpha);
+		float delta = tempfiltered - filtered;
+		float temprising = rising + ((delta > 0)*(rising < 5) - (delta < 0)*(rising > - 5));
+		
+		rising = rising * (0.5) + temprising*(0.5);
+		rising *= (filtered > 0.001);
+		filtered = tempfiltered;
+
+        if(sample_ready){
+            float prediction = ml_model.predict();
+
+            if (prediction < 0.5) {
+            printf("\t🔥 🔔\tdetected!\t(prediction = %f)\n\n", prediction);
+            } else {
+            printf("\t🔕\tNOT detected\t(prediction = %f)\n\n", prediction);
+            }
         }
-
-        float prediction = ml_model.predict();
-
-        if (prediction >= 0.5) {
-          printf("\t🔥 🔔\tdetected!\t(prediction = %f)\n\n", prediction);
-        } else {
-          printf("\t🔕\tNOT detected\t(prediction = %f)\n\n", prediction);
-        }
-
-        pwm_set_chan_level(pwm_slice_num, pwm_chan_num, prediction * 255);
     }
 
     return 0;
@@ -146,5 +148,5 @@ void on_analog_samples_ready()
     // internal sample buffer are ready for reading 
 
     // read in the new samples
-    new_samples_captured = analog_microphone_read(capture_buffer_q15, INPUT_BUFFER_SIZE);
+    new_samples_captured = analog_microphone_read(sample, INPUT_BUFFER_SIZE);
 }
