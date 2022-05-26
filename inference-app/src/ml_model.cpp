@@ -9,6 +9,7 @@
 #include "tensorflow/lite/version.h"
 
 #include "ml_model.h"
+#include "pico/stdlib.h"
 
 MLModel::MLModel(const unsigned char tflite_model[], int tensor_arena_size) :
     _tflite_model(tflite_model),
@@ -45,6 +46,16 @@ int MLModel::init()
 
         return 0;
     }
+const uint LED_PIN = PICO_DEFAULT_LED_PIN;
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
+
+sleep_ms(250);
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
+
 
     _tensor_arena = new uint8_t[_tensor_arena_size];
     if (_tensor_arena == NULL) {
@@ -53,6 +64,12 @@ int MLModel::init()
                             _tensor_arena_size);
         return 0;
     }
+
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
+
 
     _interpreter = new tflite::MicroInterpreter(
         _model, _opsResolver,
@@ -65,11 +82,21 @@ int MLModel::init()
         return 0;
     }
 
+gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
+
     TfLiteStatus allocate_status = _interpreter->AllocateTensors();
     if (allocate_status != kTfLiteOk) {
         TF_LITE_REPORT_ERROR(&_error_reporter, "AllocateTensors() failed");
         return 0;
     }
+
+gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
 
     _input_tensor = _interpreter->input(0);
     _output_tensor = _interpreter->output(0);

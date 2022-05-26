@@ -27,8 +27,8 @@ extern "C" {
 #define FFT_SIZE          256
 #define SPECTRUM_SHIFT    4
 #define INPUT_BUFFER_SIZE 16
-#define INPUT_SIZE        1323
-#define CAPTURE_THRESHOLD 0.01
+#define INPUT_SIZE        441
+#define CAPTURE_THRESHOLD 0.005
 
 // microphone configuration
 const struct analog_microphone_config analog_config = {
@@ -45,12 +45,12 @@ const struct analog_microphone_config analog_config = {
     .sample_buffer_size = INPUT_BUFFER_SIZE,
 };
 
-q15_t sample[INPUT_BUFFER_SIZE];
+q15_t buffer[INPUT_BUFFER_SIZE];
 volatile int new_samples_captured = 0;
 
 bool sample_ready = false;
 
-MLModel ml_model(tflite_model, 128 * 1323);
+MLModel ml_model(tflite_model, 100000);
 
 
 void on_analog_samples_ready();
@@ -60,12 +60,46 @@ int main( void )
     // initialize stdio
     stdio_init_all();
 
+    const uint LED_PIN = 1;// PICO_DEFAULT_LED_PIN;
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
+
+//            gpio_put(LED_PIN, 1);
+//            sleep_ms(250);
+//            gpio_put(LED_PIN, 0);
+//            sleep_ms(250);
+//            gpio_put(LED_PIN, 1);
+//            sleep_ms(250);
+//            gpio_put(LED_PIN, 0);
+//            sleep_ms(250);
+//            gpio_put(LED_PIN, 1);
+//            sleep_ms(250);
+//            gpio_put(LED_PIN, 0);
+//            sleep_ms(250);
+//            gpio_put(LED_PIN, 1);
+//            sleep_ms(250);
+//            gpio_put(LED_PIN, 0);
     printf("pico bullet detection\n");
 
     if (!ml_model.init()) {
         printf("Failed to initialize ML model!\n");
         while (1) { tight_loop_contents(); }
     }
+gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
 
     int8_t* input = (int8_t*)ml_model.input_data();
     bool recording = false;
@@ -92,6 +126,21 @@ int main( void )
         printf("Analog microphone start failed!\n");
         while (1) { tight_loop_contents(); }
     }
+gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
 
     while (1) {
         // wait for new samples
@@ -102,8 +151,9 @@ int main( void )
 
         float max = 0;
 		for(int n = 0; n < 16; n++){
-			max = abs(sample[n])>max?abs(sample[n]):max;
-			if((pow(sample[n],2) > CAPTURE_THRESHOLD) && (!recording) && (rising > 0)){
+			float sample = (float)buffer[n] / 4095.0f;
+			max = abs(sample)>max?abs(sample):max;
+			if((pow(sample,2) > CAPTURE_THRESHOLD) && (!recording) && (rising > 0)){
 				recording = true;
 			}
 			if(recording){
@@ -115,7 +165,7 @@ int main( void )
 				}
 			}
 
-            history.push(sample[n]);
+            history.push(sample);
 		}
 
 		// std::cout << max << std::endl;
@@ -129,12 +179,25 @@ int main( void )
 
         if(sample_ready){
             float prediction = ml_model.predict();
-
-            if (prediction < 0.5) {
+            sample_ready = false;
+            if (prediction > 0.5) {
             printf("\t🔥 🔔\tdetected!\t(prediction = %f)\n\n", prediction);
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
             } else {
             printf("\t🔕\tNOT detected\t(prediction = %f)\n\n", prediction);
+            gpio_put(LED_PIN, 1);
+            sleep_ms(250);
+            gpio_put(LED_PIN, 0);
             }
+
+
+
         }
     }
 
@@ -147,5 +210,5 @@ void on_analog_samples_ready()
     // internal sample buffer are ready for reading 
 
     // read in the new samples
-    new_samples_captured = analog_microphone_read(sample, INPUT_BUFFER_SIZE);
+    new_samples_captured = analog_microphone_read(buffer, INPUT_BUFFER_SIZE);
 }
